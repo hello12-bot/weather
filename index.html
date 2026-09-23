@@ -135,6 +135,13 @@
         };
         const database = {
             name: 'outfit-forecast', version: 1, store: 'settings', key: 'defaultCity',
+            getLocalCity() {
+                try { return localStorage.getItem(this.key); } catch (error) { return null; }
+            },
+            saveLocalCity(city) {
+                try { localStorage.setItem(this.key, city); } catch (error) { return false; }
+                return true;
+            },
             open() {
                 return new Promise((resolve, reject) => {
                     const request = indexedDB.open(this.name, this.version);
@@ -144,20 +151,27 @@
                 });
             },
             async getDefaultCity() {
-                const db = await this.open();
-                return new Promise((resolve, reject) => {
-                    const request = db.transaction(this.store, 'readonly').objectStore(this.store).get(this.key);
-                    request.onsuccess = () => resolve(request.result || 'Detroit');
-                    request.onerror = () => reject(request.error);
-                });
+                const localCity = this.getLocalCity();
+                if (localCity) return localCity;
+                try {
+                    const db = await this.open();
+                    return await new Promise((resolve, reject) => {
+                        const request = db.transaction(this.store, 'readonly').objectStore(this.store).get(this.key);
+                        request.onsuccess = () => { const city = request.result || 'Detroit'; this.saveLocalCity(city); resolve(city); };
+                        request.onerror = () => reject(request.error);
+                    });
+                } catch (error) { return 'Detroit'; }
             },
             async saveDefaultCity(city) {
-                const db = await this.open();
-                return new Promise((resolve, reject) => {
-                    const request = db.transaction(this.store, 'readwrite').objectStore(this.store).put(city, this.key);
-                    request.onsuccess = resolve;
-                    request.onerror = () => reject(request.error);
-                });
+                this.saveLocalCity(city);
+                try {
+                    const db = await this.open();
+                    await new Promise((resolve, reject) => {
+                        const request = db.transaction(this.store, 'readwrite').objectStore(this.store).put(city, this.key);
+                        request.onsuccess = resolve;
+                        request.onerror = () => reject(request.error);
+                    });
+                } catch (error) { /* localStorage already saved the city */ }
             }
         };
         function setStatus(message, loading = false) { elements.status.textContent = message; elements.status.className = loading ? 'status loading' : 'status'; }
