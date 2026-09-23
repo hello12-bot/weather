@@ -134,6 +134,33 @@
             71: ['Light snow', '❄'], 73: ['Snow', '❄'], 75: ['Heavy snow', '❄'], 77: ['Snow grains', '❄'], 80: ['Rain showers', '☂'], 81: ['Rain showers', '☂'], 82: ['Heavy showers', '☂'],
             85: ['Snow showers', '❄'], 86: ['Snow showers', '❄'], 95: ['Thunderstorm', '⚡'], 96: ['Storm with hail', '⚡'], 99: ['Storm with hail', '⚡']
         };
+        const database = {
+            name: 'outfit-forecast', version: 1, store: 'settings', key: 'defaultCity',
+            open() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(this.name, this.version);
+                    request.onupgradeneeded = () => request.result.createObjectStore(this.store);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            },
+            async getDefaultCity() {
+                const db = await this.open();
+                return new Promise((resolve, reject) => {
+                    const request = db.transaction(this.store, 'readonly').objectStore(this.store).get(this.key);
+                    request.onsuccess = () => resolve(request.result || 'Detroit');
+                    request.onerror = () => reject(request.error);
+                });
+            },
+            async saveDefaultCity(city) {
+                const db = await this.open();
+                return new Promise((resolve, reject) => {
+                    const request = db.transaction(this.store, 'readwrite').objectStore(this.store).put(city, this.key);
+                    request.onsuccess = resolve;
+                    request.onerror = () => reject(request.error);
+                });
+            }
+        };
         function setStatus(message, loading = false) { elements.status.textContent = message; elements.status.className = loading ? 'status loading' : 'status'; }
         function getOutfit(temperature, code, windSpeed) {
             const wet = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99].includes(code);
@@ -169,10 +196,10 @@
             const params = new URLSearchParams({ latitude: place.latitude, longitude: place.longitude, current: 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m', temperature_unit: 'fahrenheit', wind_speed_unit: 'mph', timezone: 'auto' });
             const weatherResponse = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
             if (!weatherResponse.ok) throw new Error('Weather data is unavailable right now.');
-            renderWeather(place, await weatherResponse.json()); setStatus('Updated just now.');
+            renderWeather(place, await weatherResponse.json()); await database.saveDefaultCity(place.name); setStatus('Updated just now.');
         }
         elements.form.addEventListener('submit', (event) => { event.preventDefault(); const city = elements.input.value.trim(); if (city) fetchWeather(city).catch(error => setStatus(error.message)); });
-        fetchWeather('Detroit');
+        database.getDefaultCity().then(city => { elements.input.value = city; return fetchWeather(city); }).catch(error => setStatus(error.message));
     </script>
 </body>
 </html>
